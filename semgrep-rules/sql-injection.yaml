@@ -1,0 +1,12 @@
+rules:
+  - id: sql-injection
+    severity: WARNING
+    message: "Potential SQL Injection via unsanitized input."
+    languages: [php]
+    metadata:
+      category: security
+      author: yara
+      vulnerability: sql-injection
+    pattern-either:
+      - pattern: "mysql_query($_GET[$VAR]);"
+      - pattern: "mysql_query($_POST[$VAR]);"

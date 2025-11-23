@@ -1,0 +1,13 @@
+rules:
+  - id: reflected-xss-unescaped-output
+    severity: WARNING
+    message: "Reflected XSS: unescaped user input echoed into HTML output."
+    languages: [php]
+    metadata:
+      category: security
+      author: yara
+      vulnerability: xss
+    pattern-either:
+      - pattern: echo $_GET[$VAR];
+      - pattern: echo $_POST[$VAR];
+      - pattern: echo $_REQUEST[$VAR];
