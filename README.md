@@ -1,81 +1,227 @@
-# OWASP Mutillidae II
+# OWASP Mutillidae II – Security Analysis & Static Code Review
 
-OWASP Mutillidae II is a free, open-source, deliberately vulnerable web application designed for web-security enthusiasts. It serves as a target for learning and practicing web security skills. Mutillidae can be easily installed on Linux and Windows systems using LAMP, WAMP, and XAMMP stacks. Additionally, it comes pre-installed on SamuraiWTF and OWASP BWA, and the existing version can be updated on these platforms. With dozens of vulnerabilities and hints to guide the user, Mutillidae provides an accessible web hacking environment suitable for labs, security enthusiasts, classrooms, CTFs, and vulnerability assessment tool targets. It has been widely used in graduate security courses, corporate web security training, and as an assessment target for vulnerability assessment software. OWASP Mutillidae II provides a comprehensive platform for learning and practicing web security techniques in a controlled environment.
+### Prepared by: **Mostafa Hussein**
 
-## Project Announcements
+---
 
-Stay updated with project announcements on X: [webpwnized](https://x.com/webpwnized)
+## 📌 Overview
 
-## Tutorials
+This repository documents a complete **security analysis** performed on the intentionally vulnerable web application **OWASP Mutillidae II (v2.6.62)**.
+The analysis includes:
 
-Explore our tutorials on YouTube: [webpwnized YouTube channel](https://www.youtube.com/user/webpwnized)
+* Full **Docker environment setup**
+* **Vulnerability discovery** and exploitation (SQL Injection & XSS)
+* **Static code analysis** using custom **Semgrep rules**
+* Overview of Mutillidae’s features, structure, and installation
+* Git workflow used during the exercise
 
-## Installation Guides
+This README serves as a comprehensive, technical, and standalone documentation page suitable for a GitHub repository.
 
-### Location of source code
+---
 
-Note carefully that the source code has moved to the ***src*** project directory. **Be careful to adjust accordingly.**
+## 📌 1. Environment Setup (Docker)
 
-### Standard Installation - DockerHub
+A reproducible security testing environment was built using **Docker Compose**.
 
-- [How to Run Mutillidae from DockerHub Images](https://www.youtube.com/watch?v=c1nOSp3nagw)
+### **Services**
 
-### Alternative Installation - Docker
+#### **1. Database (`db`)**
 
-- [How to Install Docker on Ubuntu](https://www.youtube.com/watch?v=Y_2JVREtDFk)
-- [How to Run Mutillidae on Docker](https://www.youtube.com/watch?v=9RH4l8ff-yg)
+* Image: `mysql:5.7`
+* Environment:
 
-### Alternative Installation - Google Cloud
+  * `MYSQL_ROOT_PASSWORD: root`
+  * `MYSQL_DATABASE: mutillidae`
+  * `MYSQL_USER: user`
+  * `MYSQL_PASSWORD: password`
+* Port: `3306`
 
-- [How to Run Mutillidae on Google Kubernetes Engine (GKE)](https://www.youtube.com/watch?v=uU1eEjrp93c)
+#### **2. Web Application (`web`)**
 
-### Legacy Installation - LAMP Stack
+* Image: `citizenstig/nowasp`
+* Port: `8080`
+* Depends on: `db`
 
-If you have a LAMP stack set up already, you can skip directly to installing Mutillidae. Check out our [comprehensive installation guide](README-INSTALLATION.md) for detailed instructions. Watch the video tutorial: [How to Install Mutillidae on LAMP Stack](https://www.youtube.com/watch?v=TcgeRab7ayM)
+This setup launches a working instance of Mutillidae II suitable for vulnerability testing.
 
-## Usage
+---
 
-Explore a large number of video tutorials available on the [webpwnized YouTube channel](https://www.youtube.com/playlist?list=PLZOToVAK85MrsyNmNp0yyUTBXqKRTh623) for guidance on using Mutillidae.
+## 📌 2. Vulnerability Identification & Exploitation
 
-## Key Features
+During reconnaissance two critical vulnerabilities were identified and successfully exploited.
 
-- Contains over 40 vulnerabilities and challenges, covering each of the OWASP Top Ten from 2007 to 2017
-- Mutillidae is actually vulnerable, eliminating the need for users to enter a "magic" statement
-- Easy installation on Linux or Windows *AMP stacks, including XAMPP, WAMP, and LAMP
-- Preinstalled on Rapid7 Metasploitable 2, Samurai Web Testing Framework (WTF), and OWASP Broken Web Apps (BWA)
-- One-click system restoration to default settings with the "Setup" button
-- Users can switch between secure and insecure modes
-- Widely used in graduate security courses, corporate web security training, and as an assessment target for vulnerability assessment software
-- Regularly updated to maintain relevance and effectiveness
+---
 
-## Directory Structure
+### **A. SQL Injection (Authentication Bypass)**
 
-Below is the updated directory structure of the project along with brief descriptions:
+**File:** `/app/classes/MySQLHandler.php`
+**Issue:** User-controlled input is directly concatenated into the SQL query:
 
-### Root Directory
-- `CHANGELOG.md` - Project change log.
-- `CONTRIBUTING.md` - Contribution guidelines.
-- `LICENSE` - Project license.
-- `README-INSTALLATION.md` - Installation instructions.
-- `README.md` - Main README file.
-- `SECURITY.md` - Security guidelines.
+```php
+$lQueryString = "SELECT username" .
+                "FROM accounts" .
+                "WHERE username='" . $pUsername . "'" .
+                "AND password='" . $pPassword . "';";
+```
 
-### Source Directory: `src`
-- **`ajax`** - Contains files related to AJAX functionality.
-- **`classes`** - PHP class files for handling various tasks (e.g., logging, token management, database operations).
-- **`data`** - Data files, such as XML data sources.
-- **`documentation`** - Documentation files including installation guides and usage instructions.
-- **`images`** - All image assets used in the application (e.g., icons, gritter assets).
-- **`includes`** - Reusable PHP files (e.g., templates, configuration files).
-- **`javascript`** - JavaScript libraries, custom scripts, and initializers for front-end functionality.
-- **`labs`** - Files for security testing, offering challenges such as SQL injection, XSS, and file inclusions.
-- **`passwords`** - Password-related files (e.g., account data).
-- **`styles`** - CSS stylesheets defining the look and feel of the application.
-- **`webservices`** - Web services for REST and SOAP APIs.
-  - **`includes`** - Reusable components for web services.
-  - **`rest`** - REST API files and related documentation.
-  - **`soap`** - SOAP service files, including libraries and documentation.
-    - **`soap/lib`** - Library files specifically for SOAP service integration.
+**Security Problems**
 
-### Additional Files and Directories
-- `version` - Contains versioning information for the project.
+* No input sanitization
+* No escaping
+* No prepared statements
+
+This enables SQL injection, allowing authentication bypass.
+
+---
+
+### **B. Reflected / Stored Cross-Site Scripting (XSS)**
+
+**File:** `/mutillidae/index.php`
+**Vulnerable Code:**
+
+```php
+<input type="text" name="initials" <?php echo $lHTMLControlAttributes ?> value="<?php echo $lUserInitials; ?>" />
+```
+
+**Cause:**
+`$lUserInitials` is printed to the page **without escaping**.
+
+**Payload Used:**
+
+```
+"><script>alert('XSS')</script>"
+```
+
+**Result:**
+Browser executes attacker-supplied JavaScript → Successful XSS.
+
+---
+
+## 📌 3. Static Code Analysis with Semgrep
+
+Two custom Semgrep rules were written to detect SQLi and XSS patterns inside the PHP codebase.
+
+### **Rule 1 – SQL Injection Detection**
+
+Targets:
+
+* Query strings constructed via concatenation
+* Unsafe uses of `mysqli_query`
+  Ignores:
+* Secure code using `mysqli_prepare(...)`
+
+### **Rule 2 – XSS Detection**
+
+Targets:
+
+* Direct `echo` of `$_GET`, `$_POST`, and `$_REQUEST`
+  Ignores:
+* Sanitized output (e.g., `htmlspecialchars()`)
+
+### **Scan Summary**
+
+* Files scanned: **170**
+* Custom rules used: **2**
+* Findings: **1 valid vulnerability**
+
+This confirmed the accuracy of the ruleset.
+
+---
+
+## 📌 4. Git Workflow
+
+The following workflow was used:
+
+1. Create new branch
+
+   ```
+   semgrep/mostafa
+   ```
+2. Add Semgrep rules, tests, documentation
+3. Commit with meaningful messages
+4. Push and submit branch for review
+
+---
+
+## 📌 5. About OWASP Mutillidae II
+
+OWASP Mutillidae II is a deliberately vulnerable web application used for:
+
+* Cybersecurity labs
+* University courses
+* CTF competitions
+* Web security training
+* Automated vulnerability testing
+
+### **Key Features**
+
+* 40+ real, exploitable vulnerabilities
+* Covers OWASP Top 10 (2007–2017)
+* Switch between secure/insecure modes
+* One-click “Reset to Default”
+* Preinstalled on:
+
+  * OWASP BWA
+  * SamuraiWTF
+  * Metasploitable 2
+
+---
+
+## 📌 6. Tutorials & Installation Resources
+
+* Official X (Twitter): **@webpwnized**
+* YouTube Tutorials: *webpwnized channel*
+
+### Installation Options
+
+* DockerHub Images
+* Docker on Linux/Windows
+* Google Cloud (GKE)
+* LAMP Stack (manual install)
+
+---
+
+## 📌 7. Updated Directory Structure (src)
+
+```
+/root
+│── README.md
+│── README-INSTALLATION.md
+│── SECURITY.md
+│── CONTRIBUTING.md
+│── CHANGELOG.md
+│── LICENSE
+│── version
+│
+└── /src
+    │── ajax
+    │── classes
+    │── data
+    │── documentation
+    │── images
+    │── includes
+    │── javascript
+    │── labs
+    │── passwords
+    │── styles
+    └── webservices
+         │── includes
+         │── rest
+         └── soap
+             └── lib
+```
+
+---
+
+## 📌 Conclusion
+
+This repository consolidates:
+
+* Full Docker environment setup
+* SQL Injection & XSS analysis
+* Custom Semgrep rules
+* Mutillidae structure & documentation
+* Git workflow and methodology
+
+The content provides a complete, professional security analysis reference prepared by **Mostafa Hussein**.
+
